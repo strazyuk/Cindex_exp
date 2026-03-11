@@ -1,4 +1,0 @@
-newspaper3k
-beautifulsoup4
-requests
-pandas
