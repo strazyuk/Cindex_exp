@@ -5,6 +5,9 @@
 
 # Dependencies
 node_modules/
+dist/
+dist-ssr/
+*.local
 
 # Python
 __pycache__/
@@ -50,6 +53,14 @@ Thumbs.db
 # Project specific
 services/crawler/storage/*
 !services/crawler/storage/.gitkeep
+
+# Exclusions requested by user
+*.csv
+*dataset*
+*plan.md
+*Plan.md
+implementation_plan.md
+MainPlan.md
 
 # Logs
 *.log
