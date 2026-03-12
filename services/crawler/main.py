@@ -40,6 +40,14 @@ async def trigger_crawl():
     asyncio.create_task(run_crawl())
     return {"status": "crawl_triggered"}
 
+@app.post("/crawl/backfill")
+async def trigger_backfill(days: int = 7):
+    """Manually trigger a backfill job."""
+    from scheduler import run_backfill
+    import asyncio
+    asyncio.create_task(run_backfill(days=days))
+    return {"status": "backfill_triggered", "days": days}
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8001))
     uvicorn.run(app, host="0.0.0.0", port=port)

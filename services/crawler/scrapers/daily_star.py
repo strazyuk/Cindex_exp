@@ -1,7 +1,10 @@
 import httpx
 from bs4 import BeautifulSoup
-from typing import List, Dict
+from typing import List, Dict, Optional
 import logging
+from datetime import datetime, timedelta
+import asyncio
+from config import BANGLADESH_ENGLISH_NEWS_SOURCES
 
 logger = logging.getLogger(__name__)
 
@@ -12,20 +15,45 @@ CRIME_KEYWORDS = [
     "case", "laundering", "fraud", "scam", "accused", "cid", "rab", "db", "bgb",
     "fled", "detained", "seized", "illegal"
 ]
+SELECTORS = BANGLADESH_ENGLISH_NEWS_SOURCES["selectors"]["The Daily Star"]
+
+async def fetch_article_body(client: httpx.AsyncClient, url: str) -> Optional[Dict]:
+    """Fetch and parse the article body from The Daily Star."""
+    try:
+        resp = await client.get(url, timeout=15)
+        if resp.status_code != 200:
+            return None
+        
+        soup = BeautifulSoup(resp.text, "html.parser")
+        body_div = None
+        for selector in SELECTORS["body"]:
+            body_div = soup.select_one(selector)
+            if body_div:
+                break
+        
+        if body_div:
+            return {
+                "body": body_div.get_text(separator=" ", strip=True),
+                "raw_html": resp.text
+            }
+    except Exception as e:
+        logger.error(f"Error fetching article body from {url}: {e}")
+    return None
 
 async def scrape_daily_star() -> List[Dict]:
-    """Scrape crime-related articles from The Daily Star English version."""
+    """Scrape recent crime articles from The Daily Star via RSS."""
     articles = []
     async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
         try:
-            resp = await client.get("https://www.thedailystar.net/crime/rss.xml")
+            url = BANGLADESH_ENGLISH_NEWS_SOURCES["crime_sections"]["The Daily Star"]
+            resp = await client.get(url)
             logger.info(f"Daily Star RSS fetch: {resp.status_code}, URL: {resp.url}")
             
             if resp.status_code != 200:
                 resp = await client.get("https://www.thedailystar.net/rss.xml")
                 logger.info(f"Daily Star Main RSS fetch: {resp.status_code}")
 
-            soup = BeautifulSoup(resp.text, "xml")
+            soup = BeautifulSoup(resp.text, "html.parser")
             items = soup.find_all("item")
             logger.info(f"Daily Star found {len(items)} items in RSS.")
 
@@ -48,36 +76,78 @@ async def scrape_daily_star() -> List[Dict]:
                 is_dhaka = any(loc in title_lower for loc in ["dhaka", "mirpur", "gulshan", "banani", "uttara", "motijheel", "dhanmondi"])
 
                 if not is_potential_crime and not is_dhaka:
-                    logger.debug(f"Skipping article (no match): {title[:50]}")
                     continue
 
-                logger.info(f"Processing candidate: {title[:50]}")
-                try:
-                    art_resp = await client.get(link)
-                    art_soup = BeautifulSoup(art_resp.text, "html.parser")
-                    body_div = art_soup.find("div", class_="field-items") or \
-                               art_soup.find("div", class_="node-content") or \
-                               art_soup.find("article") or \
-                               art_soup.find("div", class_="pb-20")
-                    
-                    body = body_div.get_text(separator=" ", strip=True) if body_div else ""
-                    raw_html = art_resp.text
-                except Exception as e:
-                    logger.error(f"Error fetching article body from {link}: {e}")
-                    body = ""
-                    raw_html = ""
-
-                if body:
+                result = await fetch_article_body(client, link)
+                if result:
                     articles.append({
                         "url": link,
                         "headline": title,
-                        "body": body,
+                        "body": result["body"],
                         "published_at": pub_date.get_text(strip=True) if pub_date else None,
                         "source": "The Daily Star",
-                        "raw_html": raw_html
+                        "raw_html": result["raw_html"]
                     })
-                    logger.info(f"Successfully scraped: {title[:50]}")
         except Exception as e:
             logger.error(f"Daily Star scraper error: {e}")
+            
+    return articles
+
+async def backfill_daily_star(days: int = 60) -> List[Dict]:
+    """Backfill articles from The Daily Star by paginating the crime-justice section."""
+    articles = []
+    # Note: The Daily Star crime-justice section pagination
+    base_url = "https://www.thedailystar.net/news/bangladesh/crime-justice"
+    
+    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
+        page = 0
+        cutoff_date = datetime.now() - timedelta(days=days)
+        still_within_range = True
+        
+        while still_within_range and page < 10: # Safety limit for pages
+            url = f"{base_url}?page={page}"
+            logger.info(f"Scraping Daily Star historical page: {url}")
+            
+            try:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    break
+                
+                soup = BeautifulSoup(resp.text, "html.parser")
+                # Look for article links in the listing
+                links = soup.select("h3 a") or soup.select("h4 a")
+                if not links:
+                    break
+                
+                page_articles_found = 0
+                for link in links:
+                    href = link['href']
+                    if href.startswith("/"):
+                        href = "https://www.thedailystar.net" + href
+                    
+                    # We might need to check the date on the listing or fetch article to see date
+                    result = await fetch_article_body(client, href)
+                    if result:
+                        # Extract date from meta or body if possible, otherwise assume page sequence
+                        # For now, we collect and let the pipeline filter by date if needed
+                        articles.append({
+                            "url": href,
+                            "headline": link.get_text(strip=True),
+                            "body": result["body"],
+                            "source": "The Daily Star",
+                            "raw_html": result["raw_html"],
+                            "published_at": None # To be refined if we find date in HTML
+                        })
+                        page_articles_found += 1
+                
+                if page_articles_found == 0:
+                    still_within_range = False
+                    
+            except Exception as e:
+                logger.error(f"Error backfilling Daily Star page {page}: {e}")
+                break
+                
+            page += 1
+            await asyncio.sleep(1)
             
     return articles

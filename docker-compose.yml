@@ -90,6 +90,7 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_ENDPOINT_URL=http://localstack:4566
+      - INDEX_CALCULATOR_URL=http://index-calculator:8003
     restart: unless-stopped
 
   index-calculator:
@@ -102,6 +103,14 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://crime:crime@db:5432/crimedb
       - UPSTASH_REDIS_URL=redis://redis:6379
+      - RECALCULATE_INTERVAL_MINUTES=15
+    restart: unless-stopped
+
+  frontend:
+    build: 
+      context: ./services/frontend
+      args:
+        - VITE_API_URL=/api
     restart: unless-stopped
 
   nginx:
@@ -114,6 +123,7 @@ services:
       - crawler
       - nlp
       - index-calculator
+      - frontend
 
 volumes:
   postgres_data:
