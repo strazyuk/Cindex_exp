@@ -62,5 +62,16 @@ services/crawler/storage/*
 implementation_plan.md
 MainPlan.md
 
+# Agent/Tool Internal States
+.agent/
+.claude/
+.qoder/
+.gemini/
+brain/
+*task.md
+*walkthrough.md
+*tracked_areas.md
+*implementation_plan.md
+
 # Logs
 *.log
