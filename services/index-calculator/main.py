@@ -56,7 +56,7 @@ async def recalculate_all_indexes():
 
             # 2. Cumulative: live events + all historical dataset rows
             idx_30d = compute_crime_index(recent_events)
-            idx_cum = compute_crime_index(all_events)
+            idx_cum = compute_crime_index(all_events, emphasize_history=True)
 
             # 3. Extract coordinates — prefer live events, fall back to dataset rows
             lat   = next((e["lat"]   for e in all_events if e.get("lat")),   None)

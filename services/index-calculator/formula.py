@@ -34,37 +34,49 @@ def recency_weight(event_date: datetime) -> float:
     days_ago = max(0, (now - event_date).days)
     return math.exp(-DECAY_LAMBDA * days_ago)
 
-def compute_crime_index(events: List[Dict], area_size_km2: float = 1.0) -> float:
+def compute_crime_index(events: List[Dict], area_size_km2: float = 1.0, emphasize_history: bool = False) -> float:
     """
     Crime Index Formula:
 
-    CrimeIndex = [ Σ (Severity_i × Recency_i × VictimFactor_i) / AreaSize ]
+    CrimeIndex = [ Σ (Severity_i × Weight_i × VictimFactor_i) / AreaSize ]
                  × FrequencyWeight
 
-    Normalization:
-    - Adaptive cap = max(200, n_events × 8) prevents cumulative scores
-      from prematurely hitting 100 for high-volume areas.
-    - Result clamped to 0–100 scale.
+    New Historical Emphasis Logic:
+    - If emphasize_history=True:
+        - Events without dates (historical dataset) get a massive Weight (2.5)
+        - Dated events increase in weight slightly as they age (establishing "risk basement")
+    - Else (30d index):
+        - Uses standard exponential decay.
     """
     if not events:
         return 0.0
 
+    now = datetime.now(timezone.utc)
     raw_sum = 0.0
     for event in events:
         severity = SEVERITY_WEIGHTS.get(event.get("crime_type", "other"), 2)
 
-        # Historical events have no date → use a slightly higher base weight.
-        # 0.1 ≈ equally weighted to an event ~46 days old.
         evt_date = event.get("published_at") or event.get("crawled_at")
         if evt_date:
-            recency = recency_weight(evt_date)
+            if evt_date.tzinfo is None:
+                evt_date = evt_date.replace(tzinfo=timezone.utc)
+            
+            if emphasize_history:
+                # Older events = more "established" risk. 
+                # Weight grows from 1.0 (recent) to 2.0 (older than 2 years)
+                days_ago = max(0, (now - evt_date).days)
+                weight = min(2.0, 1.0 + (days_ago / 730.0))
+            else:
+                weight = recency_weight(evt_date)
         else:
-            recency = 0.1    # Base weight for historical events to ensure visibility
+            # Historical dataset records have no date.
+            # When emphasizing history, they become the "bedrock" of the score.
+            weight = 2.5 if emphasize_history else 0.1
 
         victims = event.get("victim_count", 0) or 0
         victim_factor = math.log1p(victims)
 
-        raw_sum += severity * recency * max(victim_factor, 1.0)
+        raw_sum += severity * weight * max(victim_factor, 1.0)
 
     area_normalized = max(area_size_km2, 0.1)
     frequency_weight = math.log1p(len(events))

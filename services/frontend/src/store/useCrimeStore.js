@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost/api';
 
-export const useCrimeStore = create((set, get) => ({
+export const useCrimeStore = create((set) => ({
   data: [],         // items with valid coords (for map)
   allData: [],      // all items (for panel stats)
   loading: true,

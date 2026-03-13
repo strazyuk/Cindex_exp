@@ -6,17 +6,18 @@ REDIS_URL = os.getenv("UPSTASH_REDIS_URL", "redis://redis:6379")
 
 # Hardcoded coordinate fallback for well-known Dhaka areas
 # Used when NLP geocoding hasn't populated lat/lng yet
+# Used when NLP geocoding hasn't populated lat/lng yet
 DHAKA_COORDS: dict = {
     "Dhaka": (23.8103, 90.4125),
     "Mirpur": (23.8223, 90.3654),
     "Dhanmondi": (23.7461, 90.3742),
-    "Gulshan": (23.7925, 90.4078),
+    "Gulshan": (23.7939, 90.4152),       # fixed: shifted east
     "Gulshan-2": (23.7957, 90.4150),
     "Mohammadpur": (23.7616, 90.3589),
     "Shahbagh": (23.7389, 90.3964),
     "Pallabi": (23.8337, 90.3614),
     "Uttara": (23.8759, 90.3795),
-    "Tejgaon": (23.7654, 90.3956),
+    "Tejgaon": (23.7597, 90.3924),       # fixed: shifted south/west
     "Shyampur": (23.7091, 90.4273),
     "Jatrabari": (23.7184, 90.4340),
     "Kamalapur": (23.7261, 90.4183),
@@ -29,8 +30,8 @@ DHAKA_COORDS: dict = {
     "Dhaka University": (23.7282, 90.3938),
     "Tejgaon Industrial Area": (23.7710, 90.3935),
     "Rampura": (23.7561, 90.4284),
-    "Khilgaon": (23.7444, 90.4284),
-    "Badda": (23.7831, 90.4284),
+    "Khilgaon": (23.7567, 90.4642),      # fixed: longitude was significantly off
+    "Badda": (23.7861, 90.4250),         # fixed: minor lat/lng adjustment
     "Banani": (23.7937, 90.4022),
     "Baridhara": (23.8043, 90.4264),
 }

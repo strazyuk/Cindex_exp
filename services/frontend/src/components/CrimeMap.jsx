@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, memo } from 'react';
+import { HeatmapController } from './HeatmapController';
 
 // Fix Leaflet icon issue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -10,48 +11,32 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// Optimized marker color mapping (5-Tier Intensity)
-// Using explicit HSL strings with shorter scales for higher sensitivity
+// Minimal color mapping
 const getIntensityLevel = (score) => {
-  if (score >= 50) return { label: 'Critical', color: 'hsl(0, 90%, 50%)', class: 'intensity-critical' };
-  if (score >= 35) return { label: 'High', color: 'hsl(15, 90%, 55%)', class: 'intensity-high' };
-  if (score >= 20) return { label: 'Moderate', color: 'hsl(35, 90%, 55%)', class: 'intensity-moderate' };
-  if (score >= 10) return { label: 'Low', color: 'hsl(70, 80%, 50%)', class: 'intensity-low' };
-  return { label: 'Minimal', color: 'hsl(140, 70%, 50%)', class: 'intensity-minimal' };
+  if (score >= 50) return { label: 'Sector Red', color: 'hsl(0, 100%, 60%)' };
+  if (score >= 35) return { label: 'Sector Orange', color: 'hsl(25, 100%, 50%)' };
+  if (score >= 20) return { label: 'Sector Amber', color: 'hsl(45, 100%, 50%)' };
+  if (score >= 10) return { label: 'Sector Yellow', color: 'hsl(81, 100%, 45%)' };
+  return { label: 'Sector Green', color: 'hsl(142, 100%, 45%)' };
 };
 
-// Component to handle map bounds when data changes
-const MapBounds = React.memo(({ data }) => {
+const MapBounds = memo(({ data }) => {
   const map = useMap();
-
   useEffect(() => {
     if (data && data.length > 0) {
-      // Leaflet automatically handles bounds for Dhaka City.
+      // Bounds handled by maxBounds
     }
   }, [data, map]);
-
   return null;
 });
 
-export const CrimeMap = React.memo(({ data }) => {
-  // Center of Dhaka default
-  const defaultCenter = [23.777, 90.399];
-  
-  // Strict bounds for Dhaka City
-  const dhakaBounds = [
-    [23.65, 90.28], // South West
-    [23.95, 90.53]  // North East
-  ];
-
-  // Memoize marker data to prevent expensive recalculations
+const CrimeMarkers = memo(({ data }) => {
   const markers = useMemo(() => {
     return data.map((area) => {
       const score30d = area.crime_index_30d || area.crime_index || 0;
       const scoreCum = area.crime_index_cumulative || 0;
       const intensity = getIntensityLevel(score30d);
-      
-      // Radius scaling (min 12, max 45)
-      const radius = Math.max(12, Math.min(45, score30d / 1.8 + 8));
+      const radius = Math.max(10, Math.min(40, score30d / 2 + 6));
 
       return {
         ...area,
@@ -62,6 +47,78 @@ export const CrimeMap = React.memo(({ data }) => {
       };
     });
   }, [data]);
+
+  return (
+    <>
+      {markers.map((area, index) => (
+        <CircleMarker
+          key={`${area.area}-${index}`}
+          center={[area.lat, area.lng]}
+          radius={area.radius}
+          pathOptions={{
+            fillColor: area.intensity.color,
+            color: area.intensity.color,
+            weight: 1.5,
+            opacity: 0.8,
+            fillOpacity: 0.25,
+          }}
+        >
+          <Popup className="dark-popup">
+            <div className="p-4 min-w-[240px] space-y-4">
+              <div className="flex justify-between items-center">
+                <span 
+                  className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-current"
+                  style={{ color: area.intensity.color }}
+                >
+                  {area.intensity.label}
+                </span>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">
+                  {area.thana || 'Central'}
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold leading-tight text-foreground">
+                  {area.area}
+                </h3>
+                <p className="text-[10px] text-muted-foreground uppercase font-medium tracking-wide">Area Coordinates: {area.lat.toFixed(3)}, {area.lng.toFixed(3)}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 py-3 border-y border-border">
+                <div className="space-y-0.5">
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase">30d Score</span>
+                  <p className="text-sm font-bold text-foreground">{area.score30d.toFixed(1)}</p>
+                </div>
+                <div className="space-y-0.5 text-right">
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase">Cumulative</span>
+                  <p className="text-sm font-bold text-foreground">{area.scoreCum.toFixed(1)}</p>
+                </div>
+              </div>
+
+              <div className="flex justify-between text-[10px] font-bold">
+                <span className="text-muted-foreground uppercase">Detection Count:</span>
+                <span className="text-foreground">{area.event_count_cumulative}</span>
+              </div>
+
+              {area.last_updated && (
+                <div className="text-[9px] text-muted-foreground font-mono text-right pt-2">
+                  ID: {area.id?.substring(0, 8) || 'N/A'} | {new Date(area.last_updated).toLocaleTimeString()}
+                </div>
+              )}
+            </div>
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  );
+});
+
+export const CrimeMap = memo(({ data }) => {
+  const defaultCenter = [23.777, 90.399];
+  const dhakaBounds = [
+    [23.65, 90.28],
+    [23.95, 90.53]
+  ];
 
   return (
     <MapContainer 
@@ -78,76 +135,15 @@ export const CrimeMap = React.memo(({ data }) => {
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
         updateWhenIdle={true}
-        updateWhenZooming={false}
-        keepBuffer={2}
       />
       
-      {data && data.length > 0 && <MapBounds data={data} />}
-
-      {markers.map((area, index) => (
-        <CircleMarker
-          key={`${area.area}-${index}`}
-          center={[area.lat, area.lng]}
-          radius={area.radius}
-          pathOptions={{
-            fillColor: area.intensity.color,
-            color: area.intensity.color,
-            weight: 2,
-            opacity: 0.9,
-            fillOpacity: 0.35,
-          }}
-        >
-          <Popup className="dark-popup">
-            <div style={{ padding: '8px', minWidth: '220px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ 
-                  fontSize: '0.65rem', 
-                  textTransform: 'uppercase', 
-                  fontWeight: '800', 
-                  padding: '2px 8px', 
-                  borderRadius: '100px', 
-                  background: 'rgba(255,255,255,0.1)',
-                  color: area.intensity.color
-                }}>
-                  {area.intensity.label} Risk
-                </span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {area.thana || 'Dhaka'}
-                </span>
-              </div>
-
-              <h3 style={{ margin: '0 0 16px 0', fontSize: '1.4rem', color: 'var(--text-primary)' }}>
-                {area.area}
-              </h3>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Recent (30d):</span>
-                  <strong className={area.intensity.class} style={{ fontSize: '1.1rem' }}>
-                    {area.score30d.toFixed(1)}
-                  </strong>
-                </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Cumulative:</span>
-                  <strong style={{ color: '#818cf8', fontSize: '1.1rem' }}>
-                    {area.scoreCum.toFixed(1)}
-                  </strong>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '4px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Total Events:</span>
-                  <span style={{ color: 'var(--text-primary)' }}>{area.event_count_cumulative}</span>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--glass-border)', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-                Synced: {new Date(area.last_updated || Date.now()).toLocaleTimeString()}
-              </div>
-            </div>
-          </Popup>
-        </CircleMarker>
-      ))}
+      <HeatmapController />
+      {data && data.length > 0 && (
+        <>
+          <MapBounds data={data} />
+          <CrimeMarkers data={data} />
+        </>
+      )}
     </MapContainer>
   );
 });

@@ -1,141 +1,163 @@
-import React, { useMemo } from 'react';
-import { Activity, ShieldAlert, AlertTriangle, TrendingUp, ChevronRight } from 'lucide-react';
+import React, { useMemo, memo, useState } from 'react';
+import { Activity, ShieldAlert, AlertTriangle, TrendingUp, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
-const getIntensityClass = (score) => {
-  if (score >= 50) return 'intensity-critical';
-  if (score >= 35) return 'intensity-high';
-  if (score >= 20) return 'intensity-moderate';
-  if (score >= 10) return 'intensity-low';
-  return 'intensity-minimal';
+const getIntensityBg = (score) => {
+  const s = Number(score) || 0;
+  if (s >= 50) return 'bg-destructive';
+  if (s >= 35) return 'bg-orange-500';
+  if (s >= 20) return 'bg-amber-500';
+  if (s >= 10) return 'bg-yellow-500';
+  return 'bg-primary';
 };
 
-import { List } from 'react-window';
+const getIntensityText = (score) => {
+  const s = Number(score) || 0;
+  if (s >= 50) return 'text-destructive';
+  if (s >= 35) return 'text-orange-500';
+  if (s >= 20) return 'text-amber-500';
+  if (s >= 10) return 'text-yellow-500';
+  return 'text-primary';
+};
 
-const AreaRow = ({ index, style, items }) => {
-  const area = items[index];
-  const score30d = area.crime_index_30d || area.crime_index || 0;
-  const scoreCum = area.crime_index_cumulative || 0;
+const AreaRow = ({ area }) => {
+  if (!area) return null;
+
+  const score30d = Number(area.crime_index_30d || area.crime_index) || 0;
+  const scoreCum = Number(area.crime_index_cumulative) || 0;
 
   return (
-    <div style={style}>
-      <li className="area-item" style={{ height: 'calc(100% - 10px)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ 
-            width: '4px', 
-            height: '24px', 
-            borderRadius: '2px', 
-            background: `var(--${getIntensityClass(score30d)})` 
-          }} />
-          <span className="area-name">{area.area}</span>
-        </div>
-        
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <span className={`area-score ${getIntensityClass(score30d)}`} style={{ minWidth: '40px', textAlign: 'right' }}>
+    <div className="flex items-center justify-between p-3 mb-2 bg-card border border-border rounded-lg hover:bg-accent transition-all cursor-pointer group">
+      <div className="flex items-center gap-3 overflow-hidden">
+        <div className={`w-1 h-6 rounded-full shrink-0 ${getIntensityBg(score30d)}`} />
+        <span className="font-medium text-foreground truncate text-sm">{area.area || 'Unknown Sector'}</span>
+      </div>
+      
+      <div className="flex items-center gap-4">
+        <div className="flex flex-col items-end min-w-[40px]">
+          <span className={`text-sm font-bold ${getIntensityText(score30d)}`}>
             {score30d.toFixed(1)}
           </span>
-          <span className="area-score" style={{ color: '#818cf8', fontSize: '0.95rem', minWidth: '40px', textAlign: 'right' }}>
+          <span className="text-[10px] text-muted-foreground font-mono uppercase">30d</span>
+        </div>
+        <div className="flex flex-col items-end min-w-[40px]">
+          <span className="text-sm font-bold text-foreground">
             {scoreCum.toFixed(1)}
           </span>
-          <ChevronRight size={14} color="var(--text-muted)" />
+          <span className="text-[10px] text-muted-foreground font-mono uppercase">Cum</span>
         </div>
-      </li>
+        <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground transition-colors" />
+      </div>
     </div>
   );
 };
 
-export const IndexPanel = React.memo(({ data, loading, refetch }) => {
-  // Memoize data calculations for performance
+export const IndexPanel = memo(({ data, loading, refetch }) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   const stats = useMemo(() => {
-    if (!data || data.length === 0) return { sorted: [], avg30d: 0, totalCum: 0 };
+    try {
+      if (!Array.isArray(data) || data.length === 0) {
+        return { sorted: [], avg30d: 0, totalCum: 0 };
+      }
 
-    const sorted = [...data].sort((a, b) => {
-      const scoreA = a.crime_index_30d || a.crime_index || 0;
-      const scoreB = b.crime_index_30d || b.crime_index || 0;
-      return scoreB - scoreA;
-    });
+      const sorted = [...data].sort((a, b) => {
+        const scoreA = Number(a?.crime_index_30d || a?.crime_index) || 0;
+        const scoreB = Number(b?.crime_index_30d || b?.crime_index) || 0;
+        return scoreB - scoreA;
+      });
 
-    const sum30d = data.reduce((acc, curr) => acc + (curr.crime_index_30d || curr.crime_index || 0), 0);
-    const totalCum = data.reduce((acc, curr) => acc + (curr.event_count_cumulative || curr.event_count_30d || 0), 0);
-    
-    return {
-      sorted,
-      avg30d: (sum30d / data.length).toFixed(1),
-      totalCum
-    };
+      const sum30d = data.reduce((acc, curr) => acc + (Number(curr?.crime_index_30d || curr?.crime_index) || 0), 0);
+      const totalCum = data.reduce((acc, curr) => acc + (Number(curr?.event_count_cumulative || curr?.event_count_30d) || 0), 0);
+      
+      return {
+        sorted,
+        avg30d: (sum30d / data.length).toFixed(1),
+        totalCum
+      };
+    } catch (err) {
+      console.error('Error calculating dashboard stats:', err);
+      return { sorted: [], avg30d: '0.0', totalCum: 0 };
+    }
   }, [data]);
 
-  if (!data) return null;
-
   return (
-    <div className="panel-container">
-      <div className="panel-header">
-        <h1 className="panel-title">
-          <ShieldAlert size={28} color="var(--intensity-critical)" />
-          Dhaka City Index
-        </h1>
-        <p className="panel-subtitle">Regional Safety Intelligence (30d & All-Time)</p>
-      </div>
+    <div 
+      className={`fixed top-4 right-4 h-[calc(100vh-32px)] transition-all duration-500 ease-in-out z-[1000] flex ${
+        isCollapsed ? 'translate-x-[364px]' : 'translate-x-0'
+      }`}
+    >
+      {/* Collapse Toggle Button */}
+      <button 
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        className="absolute left-0 -translate-x-full h-12 w-8 bg-background/95 backdrop-blur border border-border border-r-0 rounded-l-xl flex items-center justify-center text-foreground hover:bg-accent transition-colors shadow-lg"
+        title={isCollapsed ? "Expand Terminal" : "Collapse Terminal"}
+      >
+        {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+      </button>
 
-      <div className="stat-grid">
-        <div className="stat-card">
-          <div className="stat-label">System Avg</div>
-          <div className={`stat-value ${getIntensityClass(stats.avg30d)}`}>
-            {stats.avg30d}
+      {/* Main Panel Content */}
+      <div className="w-[400px] h-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border border-border rounded-xl rounded-l-none shadow-xl flex flex-col overflow-hidden">
+        <div className="p-6 pb-4 border-b border-border space-y-1">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="text-primary h-6 w-6" />
+            <h1 className="text-xl font-bold tracking-tight text-foreground">Dhaka City Index</h1>
           </div>
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Regional Intelligence Terminal</p>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">Unified Events</div>
-          <div className="stat-value" style={{ color: 'var(--text-primary)' }}>
-            {stats.totalCum}
-          </div>
-        </div>
-      </div>
 
-      <div style={{ marginBottom: '32px' }}>
-        <button 
-          className="btn-primary"
-          onClick={refetch}
-          disabled={loading}
-        >
-          <Activity size={18} />
-          {loading ? 'Analyzing...' : 'Live Refetch'}
-        </button>
-      </div>
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        <div className="area-list-header">
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <AlertTriangle size={14} /> Regional Risk Rankings
-          </span>
-          <span style={{ display: 'flex', gap: '20px' }}>
-            <span title="Last 30 Days">30d</span>
-            <span title="All Time Cumulative">Cum</span>
-          </span>
-        </div>
-        
-        <div className="area-list-viewport" style={{ flex: 1, minHeight: 0 }}>
-          {stats.sorted.length > 0 ? (
-            <List
-              height={400}
-              rowCount={stats.sorted.length}
-              rowHeight={65}
-              width="100%"
-              rowComponent={AreaRow}
-              rowProps={{ items: stats.sorted }}
-              className="scrollbar-hidden"
-            />
-          ) : !loading && (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-              Waiting for live signals...
+        <div className="p-6 space-y-6 flex-1 flex flex-col min-h-0">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 rounded-lg bg-secondary/50 border border-border space-y-1">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">System Avg</span>
+              <div className={`text-2xl font-bold ${getIntensityText(stats.avg30d)}`}>
+                {stats.avg30d}
+              </div>
             </div>
-          )}
-        </div>
-      </div>
+            <div className="p-4 rounded-lg bg-secondary/50 border border-border space-y-1">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Unified Events</span>
+              <div className="text-2xl font-bold text-foreground">
+                {stats.totalCum}
+              </div>
+            </div>
+          </div>
 
-      <div className="panel-footer" style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--glass-border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          <TrendingUp size={16} />
-          <span>Showing {stats.sorted.length} active crime hotspots</span>
+          <button 
+            onClick={refetch}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-foreground text-background font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-all active:scale-[0.98]"
+          >
+            <Activity size={16} className={loading ? 'animate-spin' : ''} />
+            {loading ? 'Analyzing...' : 'Live Refetch'}
+          </button>
+
+          <div className="flex-1 flex flex-col min-h-0 space-y-4">
+            <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-2">
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle size={12} />
+                Risk Rankings
+              </div>
+              <span>Scores</span>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+              {stats.sorted.length > 0 ? (
+                stats.sorted.map((area, idx) => (
+                  <AreaRow key={area?.area || idx} area={area} />
+                ))
+              ) : !loading && (
+                <div className="h-40 flex items-center justify-center text-sm text-muted-foreground italic">
+                  Waiting for signals...
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-border bg-secondary/30">
+          <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            <TrendingUp size={14} />
+            <span>Monitoring {stats.sorted.length} active sectors</span>
+          </div>
         </div>
       </div>
     </div>
