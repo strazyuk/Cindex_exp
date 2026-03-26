@@ -2,12 +2,27 @@
 .env
 .env.local
 .env.*.local
+*.env
 
 # Dependencies
 node_modules/
 dist/
 dist-ssr/
 *.local
+.terraform/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
 
 # Python
 __pycache__/
@@ -50,9 +65,40 @@ Thumbs.db
 # Docker
 .docker/
 
-# Project specific
+# Project specific / Temporary files
 services/crawler/storage/*
 !services/crawler/storage/.gitkeep
+apigw_event.json
+err.json
+error.json
+final_check.json
+lambda_env.json
+latest_error.json
+temp.json
+verify2.json
+verify_fix.json
+build_log.txt
+build_log_2.txt
+full_error_log.txt
+full_stream_debug.txt
+full_trace.txt
+latest_full_logs.txt
+tail.txt
+weight_results.txt
+deps_info.txt
+deps_list.txt
+data_dump.sql
+local_indexer.zip
+local_indexer_audit/
+build_test/
+temp_deps/
+temp_deps_list/
+0
+eda_final_results.json
+skills-lock.json
+ignored_tracked.txt
+staged_changes.txt
+*.html
 
 # Exclusions requested by user
 *.csv
@@ -64,14 +110,18 @@ MainPlan.md
 
 # Agent/Tool Internal States
 .agent/
+.agents/
 .claude/
 .qoder/
 .gemini/
+.brain/
 brain/
 *task.md
 *walkthrough.md
 *tracked_areas.md
 *implementation_plan.md
+task.md
+walkthrough.md
 
 # Logs
 *.log

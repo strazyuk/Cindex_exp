@@ -36,6 +36,7 @@ services:
     environment:
       - SERVICES=s3,sqs
       - DEFAULT_REGION=ap-southeast-1
+      - SQS_ENDPOINT_STRATEGY=path
     volumes:
       - localstack_data:/var/lib/localstack
     healthcheck:

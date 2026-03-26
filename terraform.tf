@@ -3,205 +3,256 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# --- Networking ---
-resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_hostnames = true
-  tags = { Name = "dhaka-crime-vpc" }
+# --- S3 & SQS ---
+resource "random_id" "id" {
+  byte_length = 4
 }
 
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
+resource "aws_s3_bucket" "html_storage" {
+  bucket = "dhaka-crime-raw-html-${random_id.id.hex}"
 }
 
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
-  availability_zone       = "us-east-1a"
+resource "aws_sqs_queue" "crime_queue" {
+  name                       = "crime-extraction-queue"
+  visibility_timeout_seconds = 300 # 5 minutes, gives NLP lambda time to process
 }
 
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
+# --- Variables (Database and API Keys) ---
+variable "database_url" {
+  description = "Supabase PostgreSQL connection string"
+  type        = string
+  sensitive   = true
+}
+
+variable "groq_api_key" {
+  description = "API Key for Groq Llama 3"
+  type        = string
+  sensitive   = true
+}
+# --- IAM Roles for Lambda ---
+data "aws_iam_policy_document" "lambda_assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
   }
 }
 
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
+resource "aws_iam_role" "lambda_execution_role" {
+  name               = "dhaka_crime_lambda_role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
 }
 
-# --- Security Groups ---
-resource "aws_security_group" "web_sg" {
-  name   = "dhaka-crime-web-sg"
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # In production, restrict to your IP
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
+  role       = aws_iam_role.lambda_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_security_group" "db_sg" {
-  name   = "dhaka-crime-db-sg"
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.web_sg.id]
-  }
-}
-
-# --- IAM Policy (Consolidated) ---
-resource "aws_iam_policy" "dhaka_crime_service_policy" {
-  name        = "dhaka_crime_service_policy"
-  path        = "/"
-  description = "Permissions for Dhaka Crime Index services"
-
+resource "aws_iam_policy" "lambda_service_policy" {
+  name        = "dhaka_crime_lambda_service_policy"
+  description = "Permissions for S3 and SQS access for Lambdas"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
-        Resource = ["arn:aws:s3:::dhaka-crime-raw-html-*", "arn:aws:s3:::dhaka-crime-raw-html-*/*"]
+        Action   = ["s3:*"]
+        Resource = ["${aws_s3_bucket.html_storage.arn}", "${aws_s3_bucket.html_storage.arn}/*"]
       },
       {
         Effect   = "Allow"
-        Action   = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        Action   = ["sqs:*"]
         Resource = aws_sqs_queue.crime_queue.arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter", "ssm:GetParameters"]
-        Resource = "arn:aws:ssm:us-east-1:*:parameter/dhaka-crime/*"
       }
     ]
   })
 }
 
-resource "aws_iam_role" "ec2_role" {
-  name = "dhaka_crime_ec2_role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = { Service = "ec2.amazonaws.com" }
-    }]
-  })
+resource "aws_iam_role_policy_attachment" "attach_app_policy" {
+  role       = aws_iam_role.lambda_execution_role.name
+  policy_arn = aws_iam_policy.lambda_service_policy.arn
 }
 
-resource "aws_iam_role_policy_attachment" "attach_policy" {
-  role       = aws_iam_role.ec2_role.name
-  policy_arn = aws_iam_policy.dhaka_crime_service_policy.arn
+# --- Lambda Artifacts in S3 ---
+resource "aws_s3_bucket" "lambda_artifacts" {
+  bucket = "dhaka-crime-lambda-artifacts-${random_id.id.hex}"
 }
 
-resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "dhaka_crime_ec2_profile"
-  role = aws_iam_role.ec2_role.name
+# --- Dummy Zip Archives Removed ---
+# Deployment is managed externally by deploy.ps1 to properly package dependencies.
+# We no longer zip the source directory locally during terraform apply.
+
+# --- 1. Crawler Lambda (Cron Triggered) ---
+resource "aws_lambda_function" "crawler" {
+  function_name    = "dhaka-crime-crawler"
+  role             = aws_iam_role.lambda_execution_role.arn
+  handler          = "aws_handler.handler"
+  runtime          = "python3.11"
+  timeout          = 300 # 5 minutes
+  s3_bucket        = aws_s3_bucket.lambda_artifacts.bucket
+  s3_key           = "crawler.zip"
+
+  environment {
+    variables = {
+      SQS_CRAWL_QUEUE_URL = aws_sqs_queue.crime_queue.url
+      STORAGE_MODE        = "s3"
+      S3_BUCKET_NAME      = aws_s3_bucket.html_storage.bucket
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      s3_bucket,
+      s3_key,
+      source_code_hash,
+    ]
+  }
 }
 
-# --- S3 & SQS ---
-resource "aws_s3_bucket" "html_storage" {
-  bucket = "dhaka-crime-raw-html-prod-${random_id.id.hex}"
+resource "aws_cloudwatch_event_rule" "crawler_cron" {
+  name                = "every-hour-crawler"
+  schedule_expression = "rate(2 hours)"
 }
 
-resource "random_id" "id" {
-  byte_length = 4
+resource "aws_cloudwatch_event_target" "trigger_crawler" {
+  rule      = aws_cloudwatch_event_rule.crawler_cron.name
+  target_id = "lambda"
+  arn       = aws_lambda_function.crawler.arn
 }
 
-resource "aws_sqs_queue" "crime_queue" {
-  name = "crime-extraction-queue"
+resource "aws_lambda_permission" "allow_eventbridge_crawler" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.crawler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.crawler_cron.arn
 }
 
-# --- Secrets (SSM) ---
-variable "database_master_password" {
-  description = "The master password for the RDS database"
-  type        = string
-  sensitive   = true
+# --- 2. NLP Service (SQS Triggered) ---
+resource "aws_lambda_function" "nlp" {
+  function_name    = "dhaka-crime-nlp-processor"
+  role             = aws_iam_role.lambda_execution_role.arn
+  handler          = "aws_handler.handler"
+  runtime          = "python3.11"
+  timeout          = 300
+  memory_size      = 256
+  s3_bucket        = aws_s3_bucket.lambda_artifacts.bucket
+  s3_key           = "nlp.zip"
+
+  environment {
+    variables = {
+      GROQ_API_KEY = var.groq_api_key
+      DATABASE_URL = var.database_url
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      s3_bucket,
+      s3_key,
+      source_code_hash,
+    ]
+  }
 }
 
-resource "aws_ssm_parameter" "db_password" {
-  name  = "/dhaka-crime/production/database/password/master"
-  type  = "SecureString"
-  value = var.database_master_password
+resource "aws_lambda_event_source_mapping" "sqs_to_nlp" {
+  event_source_arn = aws_sqs_queue.crime_queue.arn
+  function_name    = aws_lambda_function.nlp.arn
+  batch_size       = 5
 }
 
-# --- Database (RDS) ---
-resource "aws_db_instance" "postgres" {
-  identifier           = "dhaka-crime-db"
-  allocated_storage    = 20
-  engine               = "postgres"
-  engine_version       = "16"
-  instance_class       = "db.t4g.micro"
-  db_name              = "crimedb"
-  username             = "crimeadmin"
-  password             = var.database_master_password
-  parameter_group_name = "default.postgres16"
-  skip_final_snapshot  = true
-  vpc_security_group_ids = [aws_security_group.db_sg.id]
-  db_subnet_group_name   = aws_db_subnet_group.db_subnet.name
+# --- 3. Index Calculator (API Gateway + Cron) ---
+resource "aws_lambda_function" "indexer" {
+  function_name    = "dhaka-crime-index-calculator"
+  role             = aws_iam_role.lambda_execution_role.arn
+  handler          = "main.handler" # Mangum wrapper
+  runtime          = "python3.11"
+  timeout          = 30
+  memory_size      = 256
+  s3_bucket        = aws_s3_bucket.lambda_artifacts.bucket
+  s3_key           = "indexer.zip"
+
+  environment {
+    variables = {
+      DATABASE_URL      = var.database_url
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      s3_bucket,
+      s3_key,
+      source_code_hash,
+    ]
+  }
 }
 
-resource "aws_db_subnet_group" "db_subnet" {
-  name       = "dhaka-crime-db-subnet"
-  subnet_ids = [aws_subnet.public.id, aws_subnet.secondary.id]
+# Cron for 15-minute recalculation
+resource "aws_cloudwatch_event_rule" "indexer_cron" {
+  name                = "every-15-min-indexer"
+  schedule_expression = "rate(15 minutes)"
 }
 
-resource "aws_subnet" "secondary" { # RDS needs at least 2 AZs
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "us-east-1b"
+resource "aws_cloudwatch_event_target" "trigger_indexer" {
+  rule      = aws_cloudwatch_event_rule.indexer_cron.name
+  target_id = "lambda"
+  arn       = aws_lambda_function.indexer.arn
+  input     = jsonencode({ "action": "cron" }) # Dummy payload to trigger it
 }
 
-# --- Compute (EC2) ---
-resource "aws_instance" "app_host" {
-  ami                    = "ami-0c101f26f147fa7fd" # Amazon Linux 2023 (us-east-1)
-  instance_type          = "t3.small"
-  subnet_id              = aws_subnet.public.id
-  vpc_security_group_ids = [aws_security_group.web_sg.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
-
-  user_data = <<-EOF
-              #!/bin/bash
-              yum update -y
-              yum install -y docker
-              service docker start
-              usermod -a -G docker ec2-user
-              # Install Docker Compose
-              curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-              chmod +x /usr/local/bin/docker-compose
-              EOF
-
-  tags = { Name = "dhaka-crime-app-host" }
+resource "aws_lambda_permission" "allow_eventbridge_indexer" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.indexer.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.indexer_cron.arn
 }
 
-output "app_public_ip" {
-  value = aws_instance.app_host.public_ip
+# HTTP API Gateway for React Frontend
+resource "aws_apigatewayv2_api" "http_api" {
+  name          = "dhaka-crime-api"
+  protocol_type = "HTTP"
+  cors_configuration {
+    allow_origins = ["*"] # Configure strictly in Production
+    allow_methods = ["GET", "OPTIONS"]
+    allow_headers = ["content-type", "x-amz-date", "authorization", "x-api-key"]
+  }
 }
 
-output "db_endpoint" {
-  value = aws_db_instance.postgres.endpoint
+resource "aws_apigatewayv2_integration" "lambda_integration" {
+  api_id             = aws_apigatewayv2_api.http_api.id
+  integration_uri    = aws_lambda_function.indexer.invoke_arn
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+}
+
+resource "aws_apigatewayv2_route" "default_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+resource "aws_apigatewayv2_stage" "default_stage" {
+  api_id      = aws_apigatewayv2_api.http_api.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.indexer.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
+}
+
+# --- Outputs ---
+output "api_gateway_url" {
+  value = aws_apigatewayv2_api.http_api.api_endpoint
+  description = "Set this as REACT_APP_API_URL in your React Frontend"
+}
+output "s3_bucket_name" {
+  value = aws_s3_bucket.html_storage.bucket
 }

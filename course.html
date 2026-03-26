@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dhaka Crime Index — Interactive Course</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            /* Warm Palette */
+            --bg-primary: #FCF9F2;
+            --bg-secondary: #F5F1E9;
+            --bg-code: #1E1E2E;
+            --text-primary: #2D2D2D;
+            --text-secondary: #5F5F5F;
+            --accent: #E11D48;
+            /* Crimson / Rose */
+            --accent-warm: #FB7185;
+            --border: #E5E1D8;
+
+            /* Spacing */
+            --space-4: 1rem;
+            --space-8: 2rem;
+            --space-12: 3rem;
+            --space-20: 5rem;
+
+            /* Typography */
+            --font-display: 'Bricolage Grotesque', sans-serif;
+            --font-body: 'DM Sans', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+
+            /* Shadows */
+            --shadow-subtle: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+            --shadow-bold: 0 10px 40px -4px rgba(0, 0, 0, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            line-height: 1.6;
+            overflow-x: hidden;
+            scroll-snap-type: y proximity;
+        }
+
+        /* Module Sections */
+        section {
+            min-height: 100dvh;
+            padding: var(--space-20) var(--space-8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            scroll-snap-align: start;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+
+        section:nth-child(even) {
+            background-color: var(--bg-secondary);
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: var(--font-display);
+            line-height: 1.1;
+            font-weight: 800;
+        }
+
+        h1 {
+            font-size: clamp(3rem, 8vw, 5rem);
+            margin-bottom: var(--space-8);
+            color: var(--text-primary);
+        }
+
+        h2 {
+            font-size: clamp(2rem, 5vw, 3rem);
+            margin-bottom: var(--space-4);
+            color: var(--accent);
+        }
+
+        p {
+            font-size: 1.125rem;
+            margin-bottom: var(--space-4);
+            max-width: 60ch;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: var(--accent);
+            color: white;
+            margin-bottom: var(--space-4);
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(252, 249, 242, 0.8);
+            backdrop-filter: blur(12px);
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            border: 1px solid var(--border);
+            display: flex;
+            gap: 1.5rem;
+            box-shadow: var(--shadow-subtle);
+        }
+
+        nav a {
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: color 0.2s;
+        }
+
+        nav a.active {
+            color: var(--accent);
+        }
+
+        /* Glossary Tooltips */
+        .term {
+            border-bottom: 2px dashed var(--accent-warm);
+            cursor: pointer;
+            position: relative;
+            font-weight: 500;
+        }
+
+        .tooltip {
+            position: fixed;
+            background: white;
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+            box-shadow: var(--shadow-bold);
+            border: 1px solid var(--border);
+            z-index: 1000;
+            max-width: 250px;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Code/English Translation Blocks */
+        .translation-block {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 1px;
+            background: var(--border);
+            border-radius: 1rem;
+            overflow: hidden;
+            margin: var(--space-8) 0;
+            box-shadow: var(--shadow-bold);
+        }
+
+        .code-panel {
+            background: var(--bg-code);
+            padding: 1.5rem;
+            color: #d1d1e0;
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        .english-panel {
+            background: white;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .expl-line {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            border-left: 2px solid var(--accent-warm);
+            padding-left: 0.75rem;
+        }
+
+        /* Animations and Chat */
+        .chat-container {
+            width: 100%;
+            max-width: 400px;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 1.5rem;
+            box-shadow: var(--shadow-subtle);
+            border: 1px solid var(--border);
+            margin: var(--space-8) 0;
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            font-size: 0.9375rem;
+            max-width: 80%;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        .message.in {
+            background: #F3F4F6;
+            align-self: flex-start;
+            border-bottom-left-radius: 0.25rem;
+        }
+
+        .message.out {
+            background: var(--accent);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 0.25rem;
+            margin-left: auto;
+        }
+
+        .message.visible {
+            opacity: 1;
+            transform: translateY(0);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* Quizzes */
+        .quiz-container {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            border: 1px solid var(--border);
+            width: 100%;
+            margin-top: var(--space-12);
+        }
+
+        .option {
+            padding: 1rem;
+            border: 2px solid var(--border);
+            border-radius: 1rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .option:hover {
+            border-color: var(--accent-warm);
+            background: var(--bg-primary);
+        }
+
+        .option.correct {
+            border-color: #10B981;
+            background: #ECFDF5;
+        }
+
+        .option.wrong {
+            border-color: #EF4444;
+            background: #FEF2F2;
+        }
+
+        .quiz-feedback {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            display: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .translation-block {
+                grid-template-columns: 1fr;
+            }
+
+            section {
+                padding: var(--space-12) var(--space-4);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav id="nav-bar">
+        <a href="#intro" class="active">Intro</a>
+        <a href="#actors">Actors</a>
+        <a href="#flow">Flow</a>
+        <a href="#logic">Logic</a>
+        <a href="#infra">Infra</a>
+        <a href="#quiz">Test</a>
+    </nav>
+
+    <div id="tooltip-layer"></div>
+
+    <section id="intro">
+        <div class="container" style="text-align: center;">
+            <span class="badge">Masterclass</span>
+            <h1>Dhaka Real-Time Crime Index</h1>
+            <p style="margin: 0 auto var(--space-8);">Transforming fragmented news into actionable safety intelligence.
+                Learn how we built a production-grade analytics engine from scratch.</p>
+            <div style="display: flex; gap: 1rem; justify-content: center;">
+                <div
+                    style="background: white; padding: 2rem; border-radius: 1.5rem; border: 1px solid var(--border); flex: 1;">
+                    <h3 style="color: var(--accent);">1.1K+</h3>
+                    <p style="font-size: 0.875rem; margin: 0;">Historical records</p>
+                </div>
+                <div
+                    style="background: white; padding: 2rem; border-radius: 1.5rem; border: 1px solid var(--border); flex: 1;">
+                    <h3 style="color: var(--accent);">24/7</h3>
+                    <p style="font-size: 0.875rem; margin: 0;">Automated Scraping</p>
+                </div>
+                <div
+                    style="background: white; padding: 2rem; border-radius: 1.5rem; border: 1px solid var(--border); flex: 1;">
+                    <h3 style="color: var(--accent);">Groq</h3>
+                    <p style="font-size: 0.875rem; margin: 0;">Llama 3.3 Intelligence</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="actors">
+        <div class="container">
+            <span class="badge">Module 1: The Cast</span>
+            <h2>Meet the Micro-Services</h2>
+            <p>Our app isn't one big block of code. It's a team of specialized "actors" who talk to each other to get
+                the job done. This keeps the system <span class="term"
+                    data-definition="Modular systems are broken into independent parts that can be swapped or fixed without breaking the rest.">modular</span>
+                and scalable.</p>
+
+            <div class="chat-container">
+                <div class="message in">👋 I'm the <strong>Crawler</strong>. I scour news sites like Dhaka Tribune 24/7
+                    for crime reports.</div>
+                <div class="message out">Hey Crawler! I'm the <strong>NLP Service</strong>. I'll take those reports and
+                    use a brain (Groq LLM) to figure out exactly what happened and where.</div>
+                <div class="message in">Awesome. Once I geocode the coordinates, <strong>Index Calculator</strong> takes
+                    over.</div>
+                <div class="message out">That's me! I do the math to turn counts into "Safety Scores".</div>
+                <div class="message in">And I'm the <strong>Frontend</strong>. I make it all look pretty on a dark-mode
+                    map! 🎨</div>
+            </div>
+
+            <div
+                style="background: white; padding: 1.5rem; border-radius: 1rem; border: 1px solid var(--border); margin-top: var(--space-8);">
+                <p style="font-size: 0.875rem; font-weight: 700; color: var(--accent); margin-bottom: 0.5rem;">VIBE
+                    CODER TIP</p>
+                <p style="font-size: 0.875rem; margin: 0;">Thinking in "actors" helps you tell AI exactly where to work.
+                    Instead of saying "fix the map," say "update the Frontend's CrimeMap component."</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="flow">
+        <div class="container">
+            <span class="badge">Module 2: The Data Journey</span>
+            <h2>How News Turns into Data</h2>
+            <p>When the <span class="term">Crawler</span> finds an article, it doesn't just "send it" to the <span
+                    class="term">NLP</span> service. That would be too risky—what if the NLP service is busy? Instead,
+                they use a "Postal System."</p>
+
+            <div style="display: flex; flex-direction: column; gap: 2rem; margin: var(--space-8) 0;">
+                <div style="display: flex; align-items: center; gap: 1.5rem;">
+                    <div
+                        style="width: 60px; height: 60px; background: white; border-radius: 50%; border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 800;">
+                        1</div>
+                    <div>
+                        <h3 style="font-size: 1.25rem;">Storage (S3)</h3>
+                        <p style="font-size: 0.9375rem; color: var(--text-secondary); margin: 0;">The crawler saves the
+                            full HTML article in an <span class="term">S3</span> "Cloud Bucket." It's like a filing
+                            cabinet that never gets full.</p>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 1.5rem;">
+                    <div
+                        style="width: 60px; height: 60px; background: white; border-radius: 50%; border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 800;">
+                        2</div>
+                    <div>
+                        <h3 style="font-size: 1.25rem;">Notification (SQS)</h3>
+                        <p style="font-size: 0.9375rem; color: var(--text-secondary); margin: 0;">It then leaves a tiny
+                            "sticky note" in an <span class="term">SQS</span> Queue: "Hey, there's a new file waiting in
+                            the cabinet at this location!"</p>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 1.5rem;">
+                    <div
+                        style="width: 60px; height: 60px; background: white; border-radius: 50%; border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 800;">
+                        3</div>
+                    <div>
+                        <h3 style="font-size: 1.25rem;">Processing (NLP)</h3>
+                        <p style="font-size: 0.9375rem; color: var(--text-secondary); margin: 0;">The NLP service checks
+                            the queue, grabs the "sticky note," and goes to the filing cabinet (S3) to read the full
+                            article.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                style="padding: 2rem; background: var(--bg-code); color: white; border-radius: 1.5rem; text-align: center;">
+                <p style="font-style: italic; opacity: 0.8; margin-bottom: 1rem;">"Wait, why not just send the article
+                    directly to the NLP service?"</p>
+                <p style="font-weight: 700; color: var(--accent-warm);">Because of Reliability! If the NLP service
+                    crashes, the "sticky notes" stay in the queue. When it comes back online, it just picks up where it
+                    left off. No data lost. ✅</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="logic">
+        <div class="container">
+            <span class="badge">Module 3: Code Deep Dive</span>
+            <h2>The "Decay" Formula</h2>
+            <p>How do we decide if an area is "Safe"? We use a math trick called <strong>Exponential Decay</strong>. It
+                means a robbery today is SCARY (100% weight), but a robbery from 3 months ago is less relevant (10%
+                weight).</p>
+
+            <div class="translation-block">
+                <div class="code-panel">
+                    def recency_weight(event_date):
+                    now = datetime.now()
+                    days_ago = (now - event_date).days
+
+                    # The Magic Trick
+                    return math.exp(-0.05 * days_ago)
+                </div>
+                <div class="english-panel">
+                    <div class="expl-line">Check today's date and the date of the crime.</div>
+                    <div class="expl-line">Calculate how many days have passed since the event.</div>
+                    <div class="expl-line">This math formula naturally "shrinks" the value as days go by.</div>
+                    <div class="expl-line">A crime from 2 weeks ago is now only worth ~50% in our safety calculation!
+                    </div>
+                </div>
+            </div>
+
+            <p>By blending this with <span class="term"
+                    data-definition="A library for PostgreSQL that handles geographical objects like Points, Lines, and Polygons.">PostGIS</span>
+                spatial queries, we can calculate safety scores for every neighborhood in Dhaka in milliseconds.</p>
+        </div>
+    </section>
+
+    <section id="infra">
+        <div class="container">
+            <span class="badge">Module 4: The Foundation</span>
+            <h2>Cloud & Infrastructure</h2>
+            <p>We don't just "run" this on a laptop. We use **AWS (Amazon Web Services)** to make it live for the world.
+                But instead of clicking buttons in a dashboard, we use <strong>Terraform</strong>.</p>
+
+            <div
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin: var(--space-8) 0;">
+                <div style="background: white; padding: 1.5rem; border-radius: 1rem; border: 1px solid var(--border);">
+                    <h3 style="font-size: 1.125rem; margin-bottom: 0.5rem;">EC2 (The Server)</h3>
+                    <p style="font-size: 0.8125rem; color: var(--text-secondary);">The computer in the cloud where our
+                        Docker containers live and breathe.</p>
+                </div>
+                <div style="background: white; padding: 1.5rem; border-radius: 1rem; border: 1px solid var(--border);">
+                    <h3 style="font-size: 1.125rem; margin-bottom: 0.5rem;">RDS (The Brain)</h3>
+                    <p style="font-size: 0.8125rem; color: var(--text-secondary);">Managed PostgreSQL with PostGIS. It
+                        remembers every crime and location securely.</p>
+                </div>
+                <div style="background: white; padding: 1.5rem; border-radius: 1rem; border: 1px solid var(--border);">
+                    <h3 style="font-size: 1.125rem; margin-bottom: 0.5rem;">Terraform (IaC)</h3>
+                    <p style="font-size: 0.8125rem; color: var(--text-secondary);">"Infrastructure as Code." We write
+                        text files, and Terraform builds the cloud for us! 🛠️</p>
+                </div>
+            </div>
+
+            <div
+                style="padding: 1.5rem; border-left: 4px solid var(--accent); background: #FFF1F2; border-radius: 0.5rem;">
+                <p style="font-weight: 700; margin-bottom: 0.5rem;">Why Infrastructure as Code (IaC)?</p>
+                <p style="font-size: 0.875rem; margin: 0;">If we ever want to move our server or rebuild it, we just run
+                    one command instead of spending hours clicking buttons. It's like having a blueprint for your entire
+                    cloud city.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="quiz">
+        <div class="container">
+            <span class="badge">Final Exam</span>
+            <h2>Test Your Instincts</h2>
+            <p>Think like a lead engineer. Can you spot the right architectural move?</p>
+
+            <div class="quiz-container" id="quiz-box">
+                <h3 id="quiz-question" style="margin-bottom: var(--space-4);">Loading Question...</h3>
+                <div id="quiz-options"></div>
+                <div id="quiz-feedback" class="quiz-feedback"></div>
+                <button id="next-btn"
+                    style="display: none; margin-top: 1rem; padding: 0.5rem 1.5rem; background: var(--accent); color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-weight: 700;">Next
+                    Question</button>
+            </div>
+
+            <div id="completion-msg" style="display: none; text-align: center; padding: 3rem;">
+                <h2 style="color: #10B981;">🎉 You've Mastered the Stack!</h2>
+                <p>You now have the technical fluency to lead AI agents to build production-grade systems. Ready to
+                    deploy your own?</p>
+                <button onclick="location.reload()"
+                    style="padding: 0.75rem 2rem; border: 2px solid var(--accent); background: transparent; color: var(--accent); border-radius: 9999px; font-weight: 800; cursor: pointer; margin-top: 1rem;">Back
+                    to Start</button>
+            </div>
+        </div>
+    </section>
+
+    <footer
+        style="padding: var(--space-12) 0; text-align: center; border-top: 1px solid var(--border); background: var(--bg-secondary);">
+        <p style="font-size: 0.875rem; color: var(--text-secondary);">Built for Vibe Coders. Knowledge is your
+            Superpower. ⚡</p>
+    </footer>
+    <script>
+        // IIFE for safety
+        (() => {
+            const tooltipLayer = document.getElementById('tooltip-layer');
+            let activeTooltip = null;
+
+            // Glossary Definitions
+            const glossary = {
+                'modular': 'Software design that separates functionality into independent, interchangeable modules.',
+                'scraping': 'Automatically extracting data from websites using code.',
+                'nlp': 'Natural Language Processing: AI that understands and translates human text into data.',
+                'llm': 'Large Language Model: A powerful AI "brain" like Llama 3.3 used for reasoning.',
+                'postgis': 'A database extra that understands addresses and map coordinates.',
+                'sqs': 'AWS Simple Queue Service: A "buffer" that holds messages between services.',
+                's3': 'AWS Simple Storage Service: A cloud-based hard drive for raw files.',
+                'terraform': 'A tool that lets you build servers and databases by writing code instead of clicking buttons.'
+            };
+
+            // Quiz Data
+            const quizData = [
+                {
+                    q: "Why use SQS (Sticky Notes) instead of sending data directly to the NLP service?",
+                    options: [
+                        "It makes the code shorter",
+                        "Reliability: If the NLP service breaks, the messages stay safe in the queue",
+                        "To save money on internet costs"
+                    ],
+                    correct: 1,
+                    feedback: "Exactly! Decoupling services with a queue ensures that one service crashing doesn't bring down the whole system."
+                },
+                {
+                    q: "What does the 'Exponential Decay' formula do for our Safety Score?",
+                    options: [
+                        "It makes the map look more vibrant",
+                        "It gives more importance to crimes that happened recently",
+                        "It deletes crimes older than a week"
+                    ],
+                    correct: 1,
+                    feedback: "Spot on! By 'decaying' old events, we ensure the index reflects the 'live' risk of a neighborhood."
+                },
+                {
+                    q: "What's the best way to tell an AI agent to fix a bug in the map?",
+                    options: [
+                        "'The map is broken, fix it.'",
+                        "'Check the Frontend service's CrimeMap component for rendering issues.'",
+                        "'Rebuild the whole project from scratch.'"
+                    ],
+                    correct: 1,
+                    feedback: "Yes! Using precise technical vocabulary (Frontend, Component) helps AI give you better, faster results."
+                }
+            ];
+
+            let currentQuestion = 0;
+
+            const questionEl = document.getElementById('quiz-question');
+            const optionsEl = document.getElementById('quiz-options');
+            const feedbackEl = document.getElementById('quiz-feedback');
+            const nextBtn = document.getElementById('next-btn');
+            const quizBox = document.getElementById('quiz-box');
+            const completionMsg = document.getElementById('completion-msg');
+
+            function loadQuestion() {
+                const q = quizData[currentQuestion];
+                questionEl.textContent = q.q;
+                optionsEl.innerHTML = '';
+                feedbackEl.style.display = 'none';
+                nextBtn.style.display = 'none';
+
+                q.options.forEach((opt, i) => {
+                    const div = document.createElement('div');
+                    div.className = 'option';
+                    div.textContent = opt;
+                    div.onclick = () => selectOption(i);
+                    optionsEl.appendChild(div);
+                });
+            }
+
+            function selectOption(index) {
+                const q = quizData[currentQuestion];
+                const options = optionsEl.children;
+
+                feedbackEl.textContent = q.feedback;
+                feedbackEl.style.display = 'block';
+                feedbackEl.style.color = index === q.correct ? '#10B981' : '#EF4444';
+
+                for (let i = 0; i < options.length; i++) {
+                    options[i].style.pointerEvents = 'none';
+                    if (i === q.correct) options[i].classList.add('correct');
+                    else if (i === index) options[i].classList.add('wrong');
+                }
+
+                nextBtn.style.display = 'block';
+                if (currentQuestion === quizData.length - 1) {
+                    nextBtn.textContent = "Finish Course";
+                }
+            }
+
+            nextBtn.onclick = () => {
+                currentQuestion++;
+                if (currentQuestion < quizData.length) {
+                    loadQuestion();
+                } else {
+                    quizBox.style.display = 'none';
+                    completionMsg.style.display = 'block';
+                }
+            };
+
+            loadQuestion();
+
+            // Tooltip Logic (Fixed Positioning)
+            document.querySelectorAll('.term').forEach(term => {
+                term.addEventListener('mouseenter', (e) => {
+                    const text = glossary[term.dataset.definition?.toLowerCase() || term.textContent.toLowerCase().trim()];
+                    if (!text) return;
+
+                    const rect = term.getBoundingClientRect();
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'tooltip visible';
+                    tooltip.textContent = text;
+                    tooltip.style.left = `${rect.left + (rect.width / 2)}px`;
+                    tooltip.style.top = `${rect.top - 10}px`;
+                    tooltip.style.transform = 'translate(-50%, -100%)';
+
+                    tooltipLayer.appendChild(tooltip);
+                    activeTooltip = tooltip;
+                });
+
+                term.addEventListener('mouseleave', () => {
+                    if (activeTooltip) { activeTooltip.remove(); activeTooltip = null; }
+                });
+            });
+
+            // Intersection Observer for Navigation
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('nav a');
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navLinks.forEach(link => {
+                            link.classList.toggle('active', link.getAttribute('href').substring(1) === entry.target.id);
+                        });
+
+                        // Trigger animations inside section
+                        entry.target.querySelectorAll('.message').forEach((msg, i) => {
+                            setTimeout(() => msg.classList.add('visible'), (i + 1) * 600);
+                        });
+                    }
+                });
+            }, { threshold: 0.5 });
+
+            sections.forEach(s => observer.observe(s));
+
+            // Basic Chat Animation Logic
+            // (Will be enhanced as modules are added)
+        })();
+    </script>
+</body>
+
+</html>

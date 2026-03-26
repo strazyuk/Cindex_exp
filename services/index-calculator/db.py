@@ -1,11 +1,34 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
+from sqlalchemy.pool import NullPool
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_async_engine(DATABASE_URL)
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+_engine = None
+_AsyncSessionLocal = None
+
+
+def get_session_factory():
+    """Create a fresh engine/session factory for every request to avoid loop-sharing issues."""
+    # Mask password for safe logging
+    safe_url = DATABASE_URL.replace(DATABASE_URL.split(":")[2].split("@")[0], "********") if ":" in DATABASE_URL else DATABASE_URL
+    print(f"DEBUG: Initializing session with URL: {safe_url}")
+    
+    # Use NullPool + Dynamic creation to be totally safe in warm Lambda containers
+    engine = create_async_engine(
+        DATABASE_URL.strip(), # Ensure no leading/trailing whitespace
+        poolclass=NullPool,
+        # Mandatory for PgBouncer/Supabase Pooler on port 6543 (Transaction Mode)
+        connect_args={
+            "statement_cache_size": 0,
+            "command_timeout": 20
+        }
+    )
+    return sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def repopulate_combined_table():
@@ -14,34 +37,31 @@ async def repopulate_combined_table():
     Ensures that compound names (like 'dhaka university') are preserved as single units.
     Limits historical data to 'dhaka' only.
     """
-    async with AsyncSessionLocal() as session:
+    session_factory = get_session_factory()
+    async with session_factory() as session:
         # 1. Truncate the table for a fresh start
-        await session.execute(text("TRUNCATE combined_events RESTART IDENTITY;"))
+        await session.execute(text("TRUNCATE public.combined_events RESTART IDENTITY;"))
 
         # 2. Insert historical data (Dhaka only)
-        # Normalize: lowercase and trim area/incident_place and thana/incident_district
         await session.execute(text("""
-            INSERT INTO combined_events (source, area, crime_type, severity, event_date, victim_count, lat, lng, thana)
+            INSERT INTO public.combined_events (source, area, crime_type, severity, event_date, victim_count, lat, lng, thana)
             SELECT
                 'historical' AS source,
-                LOWER(TRIM(incident_place))::VARCHAR(200) AS area,
-                LOWER(TRIM(crime))::VARCHAR(100) AS crime_type,
+                LOWER(TRIM(incident_place::TEXT))::VARCHAR(200) AS area,
+                LOWER(TRIM(crime::TEXT))::VARCHAR(100) AS crime_type,
                 5::INTEGER AS severity,
                 NULL::TIMESTAMP AS event_date,
                 1::INTEGER AS victim_count,
                 latitude::DOUBLE PRECISION AS lat,
                 longitude::DOUBLE PRECISION AS lng,
-                LOWER(TRIM(incident_district))::VARCHAR(100) AS thana
-            FROM dataset
-            WHERE incident_place IS NOT NULL
-              AND LOWER(TRIM(incident_district)) = 'dhaka';
+                LOWER(TRIM(incident_district::TEXT))::VARCHAR(100) AS thana
+            FROM public.dataset
+            WHERE incident_place IS NOT NULL;
         """))
 
         # 3. Insert live data from crime_events
-        # Normalize: lowercase and trim area and thana
-        # Deduplication is handled by the index at query time, but here we just append.
         await session.execute(text("""
-            INSERT INTO combined_events (source, area, crime_type, severity, event_date, victim_count, lat, lng, thana, source_url)
+            INSERT INTO public.combined_events (source, area, crime_type, severity, event_date, victim_count, lat, lng, thana, source_url)
             SELECT
                 'live' AS source,
                 LOWER(TRIM(area))::VARCHAR(200) AS area,
@@ -53,7 +73,7 @@ async def repopulate_combined_table():
                 lng::DOUBLE PRECISION AS lng,
                 LOWER(TRIM(thana))::VARCHAR(100) AS thana,
                 source_url
-            FROM crime_events
+            FROM public.crime_events
             WHERE area IS NOT NULL;
         """))
 
@@ -63,11 +83,12 @@ async def repopulate_combined_table():
 async def get_all_events_by_area() -> dict:
     """
     Query the combined_events table (unified source of truth) and return:
-      area → { 'live': [...], 'all': [...] }
+      area -> { 'live': [...], 'all': [...] }
     - 'live': live crawler events only (for 30-day index)
     - 'all':  live + historical (for cumulative index)
     """
-    async with AsyncSessionLocal() as session:
+    session_factory = get_session_factory()
+    async with session_factory() as session:
         result = await session.execute(text("""
             SELECT
                 area,
@@ -79,7 +100,7 @@ async def get_all_events_by_area() -> dict:
                 lat,
                 lng,
                 thana
-            FROM combined_events
+            FROM public.combined_events
             ORDER BY area, event_date DESC NULLS LAST
         """))
         rows = result.mappings().all()
@@ -87,14 +108,14 @@ async def get_all_events_by_area() -> dict:
     area_map: dict = {}
 
     for row in rows:
-        area = row["area"]  # Already normalized at ingestion
+        area = row["area"]
         if area not in area_map:
             area_map[area] = {"live": [], "all": []}
 
         event = {
             "crime_type":   row["crime_type"],
             "severity":     row["severity"],
-            "published_at": row["event_date"],  # Formula reads 'published_at'
+            "published_at": row["event_date"],
             "victim_count": row["victim_count"],
             "lat":          row["lat"],
             "lng":          row["lng"],
@@ -119,9 +140,10 @@ async def upsert_area_index(
     thana: str = None
 ):
     """Update both 30-day and cumulative indices in the database."""
-    async with AsyncSessionLocal() as session:
+    session_factory = get_session_factory()
+    async with session_factory() as session:
         await session.execute(text("""
-            INSERT INTO area_crime_index (
+            INSERT INTO public.area_crime_index (
                 area, crime_index, event_count_30d,
                 crime_index_30d, crime_index_cumulative, event_count_cumulative,
                 lat, lng, thana, last_updated
@@ -150,8 +172,64 @@ async def upsert_area_index(
 
         # Log 30-day score to history
         await session.execute(text("""
-            INSERT INTO index_history (area, crime_index, recorded_at)
+            INSERT INTO public.index_history (area, crime_index, recorded_at)
             VALUES (:area, :idx_30d, NOW())
         """), {"area": area, "idx_30d": idx_30d})
 
         await session.commit()
+
+
+async def get_all_area_indexes() -> list:
+    """Fetch all calculated indices directly from the database (No Redis)."""
+    try:
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(text("""
+                SELECT
+                    area,
+                    crime_index,
+                    event_count_30d,
+                    crime_index_30d,
+                    crime_index_cumulative,
+                    event_count_cumulative,
+                    lat,
+                    lng,
+                    thana,
+                    last_updated
+                FROM public.area_crime_index
+            """))
+            rows = result.mappings().all()
+            # Convert to plain dicts, coercing datetime to string for JSON
+            return [
+                {k: (str(v) if hasattr(v, 'isoformat') else v) for k, v in dict(row).items()}
+                for row in rows
+            ]
+    except Exception as e:
+        print(f"CRITICAL ERROR in get_all_area_indexes: {str(e)}")
+        traceback.print_exc()
+        raise e
+
+
+async def get_area_index_from_db(area: str) -> dict:
+    """Fetch a specific area index directly from the database."""
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(text("""
+            SELECT
+                area,
+                crime_index,
+                event_count_30d,
+                crime_index_30d,
+                crime_index_cumulative,
+                event_count_cumulative,
+                lat,
+                lng,
+                thana,
+                last_updated
+            FROM public.area_crime_index
+            WHERE LOWER(area) = LOWER(:area)
+        """), {"area": area})
+        row = result.mappings().first()
+        if not row:
+            return None
+        return {k: (str(v) if hasattr(v, 'isoformat') else v) for k, v in dict(row).items()}
