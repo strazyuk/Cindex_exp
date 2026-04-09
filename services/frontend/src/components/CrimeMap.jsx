@@ -12,11 +12,12 @@ L.Icon.Default.mergeOptions({
 });
 
 // Minimal color mapping
+// Improved color mapping for more "frequent" visual feedback
 const getIntensityLevel = (score) => {
-  if (score >= 50) return { label: 'Sector Red', color: 'hsl(0, 100%, 60%)' };
-  if (score >= 35) return { label: 'Sector Orange', color: 'hsl(25, 100%, 50%)' };
-  if (score >= 20) return { label: 'Sector Amber', color: 'hsl(45, 100%, 50%)' };
-  if (score >= 10) return { label: 'Sector Yellow', color: 'hsl(81, 100%, 45%)' };
+  if (score >= 75) return { label: 'Sector Red', color: 'hsl(0, 100%, 60%)' };
+  if (score >= 55) return { label: 'Sector Orange', color: 'hsl(25, 100%, 55%)' };
+  if (score >= 35) return { label: 'Sector Amber', color: 'hsl(45, 100%, 55%)' };
+  if (score >= 15) return { label: 'Sector Yellow', color: 'hsl(81, 100%, 50%)' };
   return { label: 'Sector Green', color: 'hsl(142, 100%, 45%)' };
 };
 
@@ -33,10 +34,13 @@ const MapBounds = memo(({ data }) => {
 const CrimeMarkers = memo(({ data }) => {
   const markers = useMemo(() => {
     return data.map((area) => {
-      const score30d = area.crime_index_30d || area.crime_index || 0;
-      const scoreCum = area.crime_index_cumulative || 0;
-      const intensity = getIntensityLevel(score30d);
-      const radius = Math.max(10, Math.min(40, score30d / 2 + 6));
+      // Align with reworked historical weighting
+      const score30d = area.crime_index_30d || 0;
+      const scoreCum = area.crime_index_cumulative || area.crime_index || 0;
+      
+      // Use Cumulative score for the primary visual intensity
+      const intensity = getIntensityLevel(scoreCum);
+      const radius = Math.max(12, Math.min(45, scoreCum / 1.8 + 8));
 
       return {
         ...area,
@@ -58,9 +62,9 @@ const CrimeMarkers = memo(({ data }) => {
           pathOptions={{
             fillColor: area.intensity.color,
             color: area.intensity.color,
-            weight: 1.5,
-            opacity: 0.8,
-            fillOpacity: 0.25,
+            weight: 2,
+            opacity: 0.9,
+            fillOpacity: 0.35,
           }}
         >
           <Popup className="dark-popup">
@@ -113,7 +117,7 @@ const CrimeMarkers = memo(({ data }) => {
   );
 });
 
-export const CrimeMap = memo(({ data }) => {
+const CrimeMapComponent = memo(({ data }) => {
   const defaultCenter = [23.777, 90.399];
   const dhakaBounds = [
     [23.65, 90.28],
@@ -128,7 +132,6 @@ export const CrimeMap = memo(({ data }) => {
       maxZoom={16}
       maxBounds={dhakaBounds}
       zoomControl={false}
-      preferCanvas={true}
       style={{ height: '100%', width: '100%' }}
     >
       <TileLayer
@@ -137,7 +140,6 @@ export const CrimeMap = memo(({ data }) => {
         updateWhenIdle={true}
       />
       
-      <HeatmapController />
       {data && data.length > 0 && (
         <>
           <MapBounds data={data} />
@@ -147,3 +149,5 @@ export const CrimeMap = memo(({ data }) => {
     </MapContainer>
   );
 });
+
+export default CrimeMapComponent;

@@ -1,22 +1,30 @@
-# Environment variables
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
 *.env
+*.tfvars
+*.tfvars.json
 
 # Dependencies
 node_modules/
+.terraform/
+.Python
+env/
+.venv/
+venv/
+
+# Build & Deployment
 dist/
 dist-ssr/
-*.local
-.terraform/
+build/
+build_temp_*/
+*.zip
 
-# Terraform
+# Terraform State
 *.tfstate
 *.tfstate.*
 crash.log
-*.tfvars
-*.tfvars.json
 override.tf
 override.tf.json
 *_override.tf
@@ -24,91 +32,41 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-# Python
+# Python Metadata
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 .pytest_cache/
-.venv/
-venv/
-pip-log.txt
-pip-delete-this-directory.txt
 
-# OS specific
+# OS/IDE
 .DS_Store
 Thumbs.db
-
-# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Docker
-.docker/
-
-# Project specific / Temporary files
-services/crawler/storage/*
-!services/crawler/storage/.gitkeep
-apigw_event.json
-err.json
-error.json
-final_check.json
-lambda_env.json
-latest_error.json
-temp.json
-verify2.json
-verify_fix.json
-build_log.txt
-build_log_2.txt
-full_error_log.txt
-full_stream_debug.txt
-full_trace.txt
-latest_full_logs.txt
-tail.txt
-weight_results.txt
-deps_info.txt
-deps_list.txt
-data_dump.sql
-local_indexer.zip
-local_indexer_audit/
-build_test/
-temp_deps/
-temp_deps_list/
-0
-eda_final_results.json
-skills-lock.json
-ignored_tracked.txt
-staged_changes.txt
-*.html
-
-# Exclusions requested by user
+# Project Temporary/Debug Files
+*.json
+!package.json
+!tsconfig.json
+!composer.json
+*.log
+*.txt
+*.sql
 *.csv
-*dataset*
-*plan.md
-*Plan.md
-implementation_plan.md
+!Bangladesh-Crime-Dataset.csv
+0
+*audit/
+*deps*/
+storage/
 MainPlan.md
 
-# Agent/Tool Internal States
+# Agent/Tool States
 .agent/
 .agents/
 .claude/
@@ -118,10 +76,7 @@ MainPlan.md
 brain/
 *task.md
 *walkthrough.md
-*tracked_areas.md
 *implementation_plan.md
 task.md
 walkthrough.md
-
-# Logs
-*.log
+implementation_plan.md

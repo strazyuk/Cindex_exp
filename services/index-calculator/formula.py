@@ -22,8 +22,13 @@ SEVERITY_WEIGHTS = {
     "bodyfound":   7,  # found body (suspicious death)
 }
 
-# Exponential decay constant (lambda)
-# 0.05 means a 14-day-old event has ~50% weight.
+# Source-based multipliers
+SOURCE_WEIGHTS = {
+    "historical": 4.0,
+    "live":       1.0
+}
+
+# Exponential decay constant (lambda) for live data
 DECAY_LAMBDA = 0.05
 
 def recency_weight(event_date: datetime) -> float:
@@ -36,54 +41,52 @@ def recency_weight(event_date: datetime) -> float:
 
 def compute_crime_index(events: List[Dict], area_size_km2: float = 1.0, emphasize_history: bool = False) -> float:
     """
-    Crime Index Formula:
-
-    CrimeIndex = [ Σ (Severity_i × Weight_i × VictimFactor_i) / AreaSize ]
-                 × FrequencyWeight
-
-    New Historical Emphasis Logic:
-    - If emphasize_history=True:
-        - Events without dates (historical dataset) get a massive Weight (2.5)
-        - Dated events increase in weight slightly as they age (establishing "risk basement")
-    - Else (30d index):
-        - Uses standard exponential decay.
+    Reworked Crime Index Formula:
+    
+    1. Base Score = Σ (Severity × SourceWeight × TimeWeight × VictimFactor)
+    2. DensityScore = BaseScore / AreaSize
+    3. Log-Frequency = log1p(DensityScore) × log1p(TotalEvents)
+    4. Normalization = Sigmoid/Log based scaling to 0-100
     """
     if not events:
         return 0.0
 
-    now = datetime.now(timezone.utc)
     raw_sum = 0.0
     for event in events:
         severity = SEVERITY_WEIGHTS.get(event.get("crime_type", "other"), 2)
-
+        
+        # Source Multiplier
+        source = event.get("source", "live")
+        source_mult = SOURCE_WEIGHTS.get(source, 1.0) if emphasize_history else 1.0
+        
+        # Time weighting (Only for live data, or if date exists)
         evt_date = event.get("published_at") or event.get("crawled_at")
+        time_mult = 1.0
         if evt_date:
-            if evt_date.tzinfo is None:
-                evt_date = evt_date.replace(tzinfo=timezone.utc)
-            
-            if emphasize_history:
-                # Older events = more "established" risk. 
-                # Weight grows from 1.0 (recent) to 2.0 (older than 2 years)
-                days_ago = max(0, (now - evt_date).days)
-                weight = min(2.0, 1.0 + (days_ago / 730.0))
+            if not emphasize_history:
+                time_mult = recency_weight(evt_date)
             else:
-                weight = recency_weight(evt_date)
-        else:
-            # Historical dataset records have no date.
-            # When emphasizing history, they become the "bedrock" of the score.
-            weight = 2.5 if emphasize_history else 0.1
+                # In historical mode, dated events don't decay, they stay relevant
+                time_mult = 1.0
 
         victims = event.get("victim_count", 0) or 0
         victim_factor = math.log1p(victims)
 
-        raw_sum += severity * weight * max(victim_factor, 1.0)
+        raw_sum += severity * source_mult * time_mult * max(victim_factor, 1.0)
 
-    area_normalized = max(area_size_km2, 0.1)
-    frequency_weight = math.log1p(len(events))
-
-    raw_index = (raw_sum / area_normalized) * frequency_weight
-
-    # Adaptive normalization cap: scales with volume of data
-    raw_cap = max(200.0, len(events) * 10.0)
-    normalized = min(100.0, (raw_index / raw_cap) * 100.0)
-    return round(normalized, 2)
+    # Normalize by area
+    area_normalized = max(area_size_km2, 1.0)
+    density_score = raw_sum / area_normalized
+    
+    # Frequency impact (non-linear)
+    frequency_boost = math.log1p(len(events))
+    
+    # Logarithmic scaling to avoid being squashed by high-density areas
+    # This makes the scale more "dynamic" and easier to see differences
+    log_index = math.log1p(density_score * frequency_boost)
+    
+    # Scale log_index to 0-100 range. 
+    # A log_index of 6.0 (approx 400 linear) starts reaching the top.
+    normalized = (log_index / 6.0) * 100.0
+    
+    return round(min(100.0, normalized), 2)

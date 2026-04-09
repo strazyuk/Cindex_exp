@@ -113,6 +113,7 @@ async def get_all_events_by_area() -> dict:
             area_map[area] = {"live": [], "all": []}
 
         event = {
+            "source":       row["source"],
             "crime_type":   row["crime_type"],
             "severity":     row["severity"],
             "published_at": row["event_date"],

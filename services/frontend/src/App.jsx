@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 import './index.css';
 
 // Lazy load the heavy map component to prioritize FCP
-const CrimeMap = lazy(() => import('./components/CrimeMap').then(module => ({ default: module.CrimeMap })));
+const CrimeMap = lazy(() => import('./components/CrimeMap'));
 
 function App() {
   const { data, loading, error, refetch } = useCrimeData();

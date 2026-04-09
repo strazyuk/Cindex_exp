@@ -33,10 +33,11 @@ export function useHeatmapLayer(map, allPoints) {
       blur: 15,
       maxZoom: 17,
       gradient: {
-        0.2: 'blue',
-        0.4: 'cyan',
-        0.6: 'lime',
-        0.8: 'yellow',
+        0.1: 'blue',
+        0.2: 'cyan',
+        0.4: 'lime',
+        0.6: 'yellow',
+        0.8: 'orange',
         1.0: 'red'
       }
     }).addTo(map);
@@ -63,7 +64,10 @@ export function useHeatmapLayer(map, allPoints) {
 
       heatLayerRef.current.setOptions({ radius, blur });
       heatLayerRef.current.setLatLngs(
-        visible.map(p => [p.lat, p.lng, p.intensity_score ?? p.crime_index_30d ?? 1])
+        visible.map(p => {
+          const score = p.crime_index_cumulative ?? p.crime_index_30d ?? p.crime_index ?? 1;
+          return [p.lat, p.lng, score / 100];
+        })
       );
     }
 
