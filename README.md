@@ -1,7 +1,7 @@
 # Dhaka Real-Time Crime Index (Cindex)
 
 > [!IMPORTANT]
-> **Experimental Work in Progress.** This repository is part of an ongoing research and development effort and is not yet intended for production.
+> **Experimental Work in Progress.** This repository is part of an ongoing development effort and is not yet ready for intended production.
 
 ## Overview
 
